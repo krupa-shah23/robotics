@@ -1,0 +1,26 @@
+# ROS2
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+
+# Gazebo
+*.state
+*.db
+
+# Logs
+*.log
+
+# Data
+data/
+results/
+
+# VM
+.vscode/
+
+# Temporary
+*.tmp
+
