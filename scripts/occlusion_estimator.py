@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
+import argparse
+import json
 import math
+import os
+
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -16,6 +20,18 @@ CY = IMG_HEIGHT / 2.0
 
 TARGET_HALF_SIZE = 0.05
 DEPTH_EPSILON = 0.02
+
+
+def load_camera_pose(sidecar_path):
+    if not os.path.exists(sidecar_path):
+        raise FileNotFoundError(
+            f"Pose sidecar not found at '{sidecar_path}'.\n"
+            f"Run: python3 ~/robotics/scripts/generate_world.py first."
+        )
+    with open(sidecar_path, "r") as f:
+        record = json.load(f)
+    return (record["x"], record["y"], record["z"],
+            record["roll"], record["pitch"], record["yaw"])
 
 
 def project_point(camera_pose, point_world):
@@ -74,15 +90,21 @@ def target_silhouette_pixels(camera_pose, target_center):
 
 
 class OcclusionEstimator(Node):
-    def __init__(self):
+    def __init__(self, pose_sidecar, target_center):
         super().__init__("occlusion_estimator")
         self.bridge = CvBridge()
         self.sub = self.create_subscription(
             Image, "/camera/depth/image_raw", self.depth_callback, 10
         )
-        self.camera_pose = (0, -1.0, 1.0, 0, 0.4, 1.5708)
-        self.target_center = (0, 0, 0.55)
-        self.get_logger().info("Occlusion estimator ready, waiting for depth frames...")
+        self.camera_pose = load_camera_pose(pose_sidecar)
+        self.target_center = target_center
+
+        self.get_logger().info(
+            f"Loaded camera pose from sidecar: {self.camera_pose}"
+        )
+        self.get_logger().info(
+            f"Target center: {self.target_center}. Waiting for depth frames..."
+        )
 
     def depth_callback(self, msg):
         depth_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="32FC1")
@@ -101,19 +123,32 @@ class OcclusionEstimator(Node):
             self.get_logger().warn("No valid depth pixels in target bbox.")
             return
 
-        occluded = np.sum((region[valid]) < (target_depth - DEPTH_EPSILON))
+        occluded = np.sum(region[valid] < (target_depth - DEPTH_EPSILON))
         occlusion_pct = 100.0 * occluded / total_pixels
 
         self.get_logger().info(
-            f"Target bbox=({u_min},{v_min})-({u_max},{v_max}) "
-            f"target_depth={target_depth:.3f}m "
+            f"bbox=({u_min},{v_min})-({u_max},{v_max}) | "
+            f"target_depth={target_depth:.3f}m | "
             f"occlusion={occlusion_pct:.1f}%"
         )
 
 
 def main():
-    rclpy.init()
-    node = OcclusionEstimator()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--pose_sidecar",
+        default=os.path.expanduser("~/robotics/worlds/current_camera_pose.json")
+    )
+    parser.add_argument("--target_x", type=float, default=0.0)
+    parser.add_argument("--target_y", type=float, default=0.0)
+    parser.add_argument("--target_z", type=float, default=0.55)
+    args, ros_args = parser.parse_known_args()
+
+    rclpy.init(args=ros_args)
+    node = OcclusionEstimator(
+        pose_sidecar=args.pose_sidecar,
+        target_center=(args.target_x, args.target_y, args.target_z),
+    )
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()

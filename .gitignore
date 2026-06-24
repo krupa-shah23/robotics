@@ -24,3 +24,4 @@ results/
 # Temporary
 *.tmp
 
+worlds/current_camera_pose.json
