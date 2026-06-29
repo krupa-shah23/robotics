@@ -1,0 +1,28 @@
+{
+  "camera_pose": {
+    "x": 0.0,
+    "y": -1.2,
+    "z": 1.0,
+    "roll": 0.0,
+    "pitch": 0.3,
+    "yaw": 1.5708
+  },
+  "seed": 42,
+  "clutter_count": 2,
+  "clutter_positions": [
+    {
+      "x": 0.12548411861209535,
+      "y": -0.2849935468663998
+    },
+    {
+      "x": -0.20247361346779266,
+      "y": -0.16607355711070634
+    }
+  ],
+  "placement_attempts": 2,
+  "light_level": 0.8,
+  "requested_occlusion": 0.0,
+  "measured_occlusion": 0.0,
+  "world_file": "/home/student/robotics/worlds/generated_world.sdf",
+  "measured_visibility": 100.0
+}

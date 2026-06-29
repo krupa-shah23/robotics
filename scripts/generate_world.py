@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 import argparse
 import json
-import re
 import os
+import random
+
+from world_editor import WorldEditor
+from scene_generator import (
+    Point2D,
+    TableBounds,
+    sample_positions,
+)
 
 
 def main():
@@ -13,35 +20,116 @@ def main():
     parser.add_argument("--roll", type=float, default=0.0)
     parser.add_argument("--pitch", type=float, default=0.3)
     parser.add_argument("--yaw", type=float, default=1.5708)
+    parser.add_argument("--clutter", type=int, default=4)
+    parser.add_argument("--light", type=float, default=0.8)
+    parser.add_argument("--occlusion_target", type=float, default=0.0)
     parser.add_argument("--in_file", default=os.path.expanduser("~/robotics/worlds/manipulation_world.sdf"))
-    parser.add_argument("--out", default=os.path.expanduser("~/robotics/worlds/manipulation_world.sdf"))
-    parser.add_argument("--pose_sidecar", default=os.path.expanduser("~/robotics/worlds/current_camera_pose.json"))
+    parser.add_argument("--out", default=os.path.expanduser("~/robotics/worlds/generated_world.sdf"))
+    parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducible scene generation")
+    parser.add_argument("--metadata_file", default=os.path.expanduser("~/robotics/worlds/trial_metadata.json"))
     args = parser.parse_args()
 
-    new_pose = f"{args.x} {args.y} {args.z} {args.roll} {args.pitch} {args.yaw}"
+    editor = WorldEditor(args.in_file)
 
-    with open(args.in_file, "r") as f:
-        content = f.read()
+    editor.set_pose(
+        "camera_model",
+        args.x,
+        args.y,
+        args.z,
+        args.roll,
+        args.pitch,
+        args.yaw
+    )
 
-    pattern = re.compile(r'(<model name="camera_model">\s*<pose>)([^<]+)(</pose>)')
-    if not pattern.search(content):
-        raise RuntimeError("Could not find camera_model pose tag in SDF.")
+    editor.set_light(
+        "sun",
+        args.light
+    )
 
-    new_content = pattern.sub(lambda m: f"{m.group(1)}{new_pose}{m.group(3)}", content)
+    rng = random.Random(args.seed)
 
-    with open(args.out, "w") as f:
-        f.write(new_content)
+    bounds = TableBounds(
+        x_min=-0.45,
+        x_max=0.45,
+        y_min=-0.30,
+        y_max=0.30,
+    )
+
+    scene = sample_positions(
+        clutter_count=args.clutter,
+        target_position=Point2D(0.0, 0.0),
+        bounds=bounds,
+        min_distance_target=0.15,
+        min_distance_cubes=0.15,
+        rng=rng,
+    )
+
+    for i, position in enumerate(scene.positions):
+
+        editor.set_pose(
+            f"distractor_cube_{i+1}",
+            position.x,
+            position.y,
+            0.55,
+            0.0,
+            0.0,
+            0.0,
+        )
+    
+    print(f"Placement attempts: {scene.attempts}")
+    print(f"Random seed: {args.seed}")
+
+    for i in range(args.clutter, 4):
+
+        editor.hide_model(
+            f"distractor_cube_{i+1}"
+            )
+
+    editor.save(args.out)
+
+    camera_pose = editor.get_pose("camera_model")
 
     pose_record = {
-        "x": args.x, "y": args.y, "z": args.z,
-        "roll": args.roll, "pitch": args.pitch, "yaw": args.yaw,
+
+        "camera_pose": {
+            "x": camera_pose.x,
+            "y": camera_pose.y,
+            "z": camera_pose.z,
+            "roll": camera_pose.roll,
+            "pitch": camera_pose.pitch,
+            "yaw": camera_pose.yaw,
+        },
+
+        "seed": args.seed,
+
+        "clutter_count": args.clutter,
+
+        "clutter_positions": [
+            {
+                "x": p.x,
+                "y": p.y
+            }
+
+            for p in scene.positions
+        ],
+
+        "placement_attempts": scene.attempts,
+
+        "light_level": args.light,
+
+        "requested_occlusion": args.occlusion_target,
+
+        "measured_occlusion": None,
+
         "world_file": args.out,
-    }
-    with open(args.pose_sidecar, "w") as f:
+    }   
+
+    with open(args.metadata_file, "w") as f:
         json.dump(pose_record, f, indent=2)
 
-    print(f"[generate_world] Wrote pose '{new_pose}' to {args.out}")
-    print(f"[generate_world] Wrote sidecar to {args.pose_sidecar}")
+    print(f"[generate_world] Camera pose: {camera_pose}")
+    print(f"[generate_world] Wrote world to {args.out}")
+    print(f"[generate_world] Wrote metadata to {args.metadata_file}")
 
 
 if __name__ == "__main__":
