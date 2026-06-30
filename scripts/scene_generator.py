@@ -27,10 +27,6 @@ def random_xy(bounds: TableBounds, rng):
         rng.uniform(bounds.x_min, bounds.x_max),
         rng.uniform(bounds.y_min, bounds.y_max)
     )
-    return Point2D(
-        rng.uniform(x_min, x_max),
-        rng.uniform(y_min, y_max)
-    )
 
 def sample_positions(
     clutter_count,
@@ -75,6 +71,49 @@ def sample_positions(
         positions=positions,
         attempts=attempts
     )
+
+def sample_positions_biased(
+    clutter_count,
+    target_position,
+    camera_xy,           # NEW: (cam_x, cam_y) projected onto table plane
+    bounds,
+    min_distance_target,
+    min_distance_cubes,
+    rng,
+    sightline_bias=0.6,  # fraction of placements pulled toward the line
+    sightline_width=0.15,  # how tightly clustered around the line
+    max_attempts=500,
+):
+    # NOTE: assumes camera_xy.x ≈ target_position.x ≈ 0 (true for current grid,
+    # where only camera_z varies). If camera/target x ever differ, this needs
+    # to compute the actual line between them instead of hardcoding x≈0.
+    # NOTE: assumes camera_xy.x ≈ target_position.x ≈ 0 (true for current grid,
+    # where only camera_z varies). If camera/target x ever differ, this needs
+    # to compute the actual line between them instead of hardcoding x≈0.
+    
+    positions = []
+    attempts = 0
+    while len(positions) < clutter_count:
+        attempts += 1
+        if attempts > max_attempts:
+            raise RuntimeError(f"Failed to place {clutter_count} cubes after {max_attempts} attempts.")
+
+        if rng.random() < sightline_bias:
+            # bias x near the camera-target line (x≈0), free in y within bounds
+            x = rng.gauss(0, sightline_width)
+            x = max(bounds.x_min, min(bounds.x_max, x))
+            y = rng.uniform(bounds.y_min, bounds.y_max)
+            candidate = Point2D(x, y)
+        else:
+            candidate = random_xy(bounds, rng)  # existing uniform fallback
+
+        if distance(candidate, target_position) < min_distance_target:
+            continue
+        if any(distance(candidate, p) < min_distance_cubes for p in positions):
+            continue
+        positions.append(candidate)
+
+    return SceneLayout(positions=positions, attempts=attempts)
 
 @dataclass
 class SceneLayout:

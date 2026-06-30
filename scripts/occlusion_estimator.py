@@ -106,7 +106,7 @@ class OcclusionEstimator(Node):
         self.bridge = CvBridge()
         self.sub = self.create_subscription(
             Image,
-            "/camera/rgbd/depth_image",
+            "/camera/depth/image_raw",
             self.depth_callback,
             qos_profile_sensor_data
         )
@@ -114,6 +114,9 @@ class OcclusionEstimator(Node):
         self.camera_pose, self.metadata = load_trial_metadata(metadata_file)
         self.metadata_file = metadata_file
         self.target_center = target_center
+        self.finished = False
+        self.frame_count = 0
+        self.skip_frames = 5
         self.get_logger().info(
             f"Loaded camera pose from metadata: {self.camera_pose}"
         )
@@ -122,6 +125,14 @@ class OcclusionEstimator(Node):
         )
 
     def depth_callback(self, msg):
+        if self.finished:
+            return
+
+        self.frame_count += 1
+
+        if self.frame_count <= self.skip_frames:
+            return
+
         print("Depth callback triggered")
         depth_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="32FC1")
 
@@ -154,8 +165,9 @@ class OcclusionEstimator(Node):
 
         self.get_logger().info(f"Updated metadata: {self.metadata_file}")
 
-        return
+        self.finished = True
 
+        self.get_logger().info("Measurement complete.")
         
 
 
@@ -182,7 +194,9 @@ def main():
             args.target_z,
         ),
     )
-    rclpy.spin(node)
+    while rclpy.ok() and not node.finished:
+        rclpy.spin_once(node, timeout_sec=1.0)
+
     node.destroy_node()
     rclpy.shutdown()
 

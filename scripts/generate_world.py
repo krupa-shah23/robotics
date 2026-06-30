@@ -9,6 +9,7 @@ from scene_generator import (
     Point2D,
     TableBounds,
     sample_positions,
+    sample_positions_biased,
 )
 
 
@@ -21,6 +22,11 @@ def main():
     parser.add_argument("--pitch", type=float, default=0.3)
     parser.add_argument("--yaw", type=float, default=1.5708)
     parser.add_argument("--clutter", type=int, default=4)
+    parser.add_argument(
+        "--bias_sightline",
+        action="store_true",
+        help="Bias clutter placement toward the camera-target sightline."
+    )
     parser.add_argument("--light", type=float, default=0.8)
     parser.add_argument("--occlusion_target", type=float, default=0.0)
     parser.add_argument("--in_file", default=os.path.expanduser("~/robotics/worlds/manipulation_world.sdf"))
@@ -55,14 +61,29 @@ def main():
         y_max=0.30,
     )
 
-    scene = sample_positions(
-        clutter_count=args.clutter,
-        target_position=Point2D(0.0, 0.0),
-        bounds=bounds,
-        min_distance_target=0.15,
-        min_distance_cubes=0.15,
-        rng=rng,
-    )
+    camera_xy = Point2D(args.x, args.y)
+
+    target = Point2D(0.0, 0.0)
+
+    if args.bias_sightline:
+        scene = sample_positions_biased(
+            clutter_count=args.clutter,
+            target_position=target,
+            camera_xy=camera_xy,
+            bounds=bounds,
+            min_distance_target=0.15,
+            min_distance_cubes=0.15,
+            rng=rng,
+        )
+    else:
+        scene = sample_positions(
+            clutter_count=args.clutter,
+            target_position=target,
+            bounds=bounds,
+            min_distance_target=0.15,
+            min_distance_cubes=0.15,
+            rng=rng,
+        )
 
     for i, position in enumerate(scene.positions):
 
@@ -112,6 +133,12 @@ def main():
 
             for p in scene.positions
         ],
+
+        "sampling_mode": (
+                "biased"
+                if args.bias_sightline
+                else "uniform"
+        ),
 
         "placement_attempts": scene.attempts,
 
